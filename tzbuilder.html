@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Time Zone Buider</title>
+    <h1>Time Zone Builder</h1>
+    <div id="TZ"></div>
+    <br>
+    <button onclick="getTimeZone()">Get Time Zone</button>
+</head>
+<body>
+<script>
+
+    const timeSettings = {
+        STD: undefined,
+        offset: undefined,
+        DST: undefined,
+        dstoffset: undefined,
+        dstdate: undefined,
+        dsttime: undefined,
+        stddate: undefined,
+        stdtime: undefined
+    }
+
+    function getTimeZone() {
+        document.getElementById("TZ").textContent = getPosixSettings(timeSettings)
+    }
+
+    function test() {
+        console.log(getPosixSettings(timeSettings))
+        console.log(timeSettings)
+    }
+
+    function getPosixSettings(ts) {                     // get POSIX string to manipulate standard time to local time
+        let returnStr = ''
+        setOffset(ts, 'std', getStdDstDate('std'))      // set std offset and/or abbreviation (when no valid offset is given it will be fetched from the browser) note: abbreviation is always overwritten with UTC notation
+        if (ts.DST !== '') {                            // DST explicit '' means: do not observe dst (undefined or any other value will validate dst info fields and/or try to get from host)
+            setOffset(ts, 'dst', getStdDstDate('dst'))  // set dst offset and/or abbreviation (when no valid offset is given it will be fetched from the browser) note: abbreviation is always overwritten with UTC notation
+            if (    !isValidMFormat(ts.dstdate)         // if dst rule fields are not (all) valid, determine rule info
+                ||  !isValidTime(ts.dsttime)            // can be >24 like used for Jerusalem and should have format [+][x]x[:xx]
+                ||  !isValidMFormat(ts.stddate)
+                ||  !isValidTime(ts.stdtime)            // can be >24 like used for Jerusalem and should have format [+][x]x[:xx]
+            ) {
+                setDstRuleInfo(ts)                      // get info from host system
+            }
+        }
+        if (   !isNaN(parseInt(ts.offset.split(':')[0]))                // offset hour is numeric
+            && !isNaN(parseInt(ts.dstoffset.split(':')[0]))             // dstoffset hour is numeric
+            && (ts.offset.split(':')[1] === ts.dstoffset.split(':')[1]) // minutes is the same for both
+            && (parseInt(ts.dstoffset.split(':')[0]) === (parseInt(ts.offset.split(':')[0]) - 1))   // exactly 1 hour difference
+        ) {
+            returnStr = ts.STD + ts.offset + ts.DST                     // there is DST but dstoffset can be omitted (=default 1 hour)
+        } else {
+            if (ts.dstoffset === ts.offset) {                           // no difference STD/DST offset (= no DST)
+                returnStr = ts.STD + ts.offset                          // only STD time + offset
+            } else {
+                returnStr = ts.STD + ts.offset + ts.DST + ts.dstoffset  // also DST time + dstoffset
+            }
+        }
+        if (ts.offset !== ts.dstoffset) {                               // when DST is observed also add rule settings
+            returnStr = returnStr + ',' + ts.dstdate + ts.dsttime + ',' + ts.stddate + ts.stdtime   // add DST rule settings
+        }
+        return returnStr
+    }
+
+    function getStdDstDate(stddst) {
+        const y = new Date().getFullYear()
+        const jan = new Date(y,0,1)
+        const sep = new Date(y,8,1)
+        if (stddst === 'std') {
+            return jan.getTimezoneOffset() >= sep.getTimezoneOffset() ? jan : sep
+        } else {
+            return jan.getTimezoneOffset() >= sep.getTimezoneOffset() ? sep : jan
+        }
+    }
+
+    function setOffset(ts, stddst, refDate) {
+        let offset = stddst === 'dst' ? ts.dstoffset : ts.offset
+        let code
+        if (!isValidTime(offset, true)) {   // set offset from host system when unset (not supplied) or not the right format ([+][x]x[:xx], max 24)
+            const offsetTotalMinutes = refDate.getTimezoneOffset()  // offset host system in minutes
+            const offsetHours = Math.trunc(offsetTotalMinutes/60)
+            const offsetMinutes = (Math.abs(offsetTotalMinutes)) - Math.abs(offsetHours*60)
+            offset = `${offsetHours<0?'-':'+'}${String(Math.abs(offsetHours))}${offsetMinutes !== 0 ? ':' + String(offsetMinutes).padStart(2,'0') : ''}`
+            code = `<UTC${offsetHours<0?'+':'-'}${String(Math.abs(offsetHours)).padStart(2,'0')}${parseInt(offsetMinutes) !== 0 ? ':' + String(offsetMinutes).padStart(2,'0') : ''}>` // set zone abbreviation (general syntax, no official code)
+        } else {
+            const offsetHours = offset.split(':')[0]
+            const offsetMinutes = offset.split(':')[1]
+            offset = `${offsetHours<0?'-':'+'}${String(Math.abs(offsetHours))}${offsetMinutes !== 0 ? ':' + String(offsetMinutes).padStart(2,'0') : ''}`
+            code = `<UTC${offsetHours<0?'+':'-'}${String(Math.abs(offsetHours)).padStart(2,'0')}${parseInt(offsetMinutes) !== 0 ? ':' + String(offsetMinutes).padStart(2,'0') : ''}>` // set zone abbreviation (general syntax, no official code)
+            // console.log(offsetHours, offsetMinutes, code)
+        }
+        if (stddst === 'dst') {
+            ts.dstoffset = offset
+            ts.DST = code
+        } else {
+            ts.offset = offset
+            ts.STD = code
+        }
+    }
+
+    function isValidTime(val, limit24) {
+        if (limit24){                                           // if max 24:00
+            if (/^(\+|-)?(([0-1])?[0-9]|2[0-4])(:([0-5][0-9]))?$/.test(val)) {    // if formatted right ([+][x]x[:xx] with max 24 as hour value) check if abs not > 24:00 (because 24:33 would still pass)
+                const splitted = val.split(':')
+                if ((splitted.length > 1) && (Math.abs(splitted[0]) === 24)) { // when minutes given and max hour
+                    if (parseInt(splitted[1]) === 0) {          // minutes should be 00
+                        return true
+                    }
+                } else {
+                    return true
+                }
+            }
+        } else {
+            if (/^(\+|-)?(([0-9])?[0-9])(:([0-5][0-9]))?$/.test(val)) {    // if formatted right ([+][x]x[:xx]) pass
+                return true
+            }
+        }
+        return false
+    }
+
+    function isValidMFormat(val) {
+        if (/^M([2-9]|1[0-2]?)\.([1-5])\.([0-6])$/.test(val)) {
+            return true
+        }
+        return false
+    }
+
+    function setDstRuleInfo(ts) {
+        const year = new Date().getFullYear()
+        let lastOffset = 99
+        let dstStart = 0
+        let stdStart = 0
+        for (i = 0; i < 12; i++)
+        {
+            let newDate = new Date(Date.UTC(year, i, 0, 0, 0, 0, 0))
+            let tzo = -1 * newDate.getTimezoneOffset() / 60
+            if (tzo > lastOffset)
+                dstStart = i - 1
+            else if (tzo < lastOffset)
+                stdStart = i - 1
+            lastOffset = tzo;
+        }
+        setMDate(ts, 'dst', year, dstStart)
+        setMDate(ts, 'std', year, stdStart)
+    }
+    
+    function setMDate(ts, set, year, month){
+        const baseOffset = -1 * (new Date(Date.UTC(year, month, 0, 0, 0, 0, 0))).getTimezoneOffset() / 60
+        let changeMinute = -1
+        for (day = 0; day < 50; day++)
+        {
+            let tmpDate = new Date(Date.UTC(year, month, day, 0, 0, 0, 0))
+            let tmpOffset = -1 * tmpDate.getTimezoneOffset() / 60
+            if (tmpOffset != baseOffset)
+            {
+                let minutes = 0
+                tmpDate = new Date(Date.UTC(year, month, day-1, 0, 0, 0, 0))
+                tmpOffset = -1 * tmpDate.getTimezoneOffset() / 60
+                while (changeMinute == -1)
+                {
+                    tmpDate = new Date(Date.UTC(year, month, day-1, 0, minutes, 0, 0))
+                    tmpOffset = -1 * tmpDate.getTimezoneOffset() / 60
+                    if (tmpOffset != baseOffset)
+                    {
+                        tmpOffset = new Date(Date.UTC(year, month, day-1, 0, minutes-1, 0, 0))
+                        changeMinute = minutes
+                        break
+                    }
+                    else
+                        minutes++
+                }
+                let occur = Math.trunc((tmpOffset.getDate() - 1) / 7) + 1
+                occur = (tmpOffset.getDay() === 0) && (occur === 4) ? 5 : occur
+                tmpDate = new Date(Date.UTC(year, month, day-1, 0, minutes-1, 0, 0))
+                swhour = tmpDate.getMinutes() === 59 ? tmpDate.getHours()+1 : tmpDate.getHours()
+                swmin = tmpDate.getMinutes() === 59 ? 0 : tmpDate.getMinutes()+1
+                timestr = `${swhour !== 2 ? swhour : ''}${swmin !== 0 ? ':' + swmin : ''}`
+                if (set === 'dst') {
+                    ts.dstdate = `M${tmpOffset.getMonth() + 1}.${occur}.${tmpOffset.getDay()}`
+                    ts.dsttime = `${timestr !== '' ? '/' + timestr : ''}`
+                } else if (set === 'std') {
+                    ts.stddate = `M${tmpOffset.getMonth() + 1}.${occur}.${tmpOffset.getDay()}`
+                    ts.stdtime = `${timestr !== '' ? '/' + timestr : ''}`
+                } else {
+                    console.log('set field unknown')
+                }
+                return
+            }
+        }
+    }
+
+</script>
+</body>
+</html>
