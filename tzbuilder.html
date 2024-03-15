@@ -24,6 +24,8 @@
     }
 
     function getTimeZone() {
+        // timeSettings.offset = undefined
+        // timeSettings.dstoffset = undefined
         document.getElementById("TZ").textContent = getPosixSettings(timeSettings)
     }
 
@@ -77,20 +79,17 @@
 
     function setOffset(ts, stddst, refDate) {
         let offset = stddst === 'dst' ? ts.dstoffset : ts.offset
-        let code
+        let code, offsetHours, offsetMinutes
         if (!isValidTime(offset, true)) {   // set offset from host system when unset (not supplied) or not the right format ([+][x]x[:xx], max 24)
             const offsetTotalMinutes = refDate.getTimezoneOffset()  // offset host system in minutes
-            const offsetHours = Math.trunc(offsetTotalMinutes/60)
-            const offsetMinutes = (Math.abs(offsetTotalMinutes)) - Math.abs(offsetHours*60)
-            offset = `${offsetHours<0?'-':'+'}${String(Math.abs(offsetHours))}${offsetMinutes !== 0 ? ':' + String(offsetMinutes).padStart(2,'0') : ''}`
-            code = `<UTC${offsetHours<0?'+':'-'}${String(Math.abs(offsetHours)).padStart(2,'0')}${parseInt(offsetMinutes) !== 0 ? ':' + String(offsetMinutes).padStart(2,'0') : ''}>` // set zone abbreviation (general syntax, no official code)
+            offsetHours = Math.trunc(offsetTotalMinutes/60)
+            offsetMinutes = (Math.abs(offsetTotalMinutes)) - Math.abs(offsetHours*60)
         } else {
-            const offsetHours = offset.split(':')[0]
-            const offsetMinutes = offset.split(':')[1]
-            offset = `${offsetHours<0?'-':'+'}${String(Math.abs(offsetHours))}${offsetMinutes !== 0 ? ':' + String(offsetMinutes).padStart(2,'0') : ''}`
-            code = `<UTC${offsetHours<0?'+':'-'}${String(Math.abs(offsetHours)).padStart(2,'0')}${parseInt(offsetMinutes) !== 0 ? ':' + String(offsetMinutes).padStart(2,'0') : ''}>` // set zone abbreviation (general syntax, no official code)
-            // console.log(offsetHours, offsetMinutes, code)
+            offsetHours = offset.split(':')[0]
+            offsetMinutes = offset.split(':')[1]
         }
+        offset = `${offsetHours<0?'-':'+'}${String(Math.abs(offsetHours))}${parseInt(offsetMinutes) > 0 ? ':' + String(offsetMinutes).padStart(2,'0') : ''}`
+        code = `<UTC${offsetHours<0?'+':'-'}${String(Math.abs(offsetHours)).padStart(2,'0')}${parseInt(offsetMinutes) > 0 ? ':' + String(offsetMinutes).padStart(2,'0') : ''}>` // set zone abbreviation (general syntax, no official code)
         if (stddst === 'dst') {
             ts.dstoffset = offset
             ts.DST = code
